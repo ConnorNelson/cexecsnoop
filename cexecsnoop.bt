@@ -1,0 +1,27 @@
+#!/usr/bin/bpftrace
+
+#include <linux/sched.h>
+#include <linux/nsproxy.h>
+#include <linux/pid_namespace.h>
+
+BEGIN
+{
+    if ($# != 1) {
+        printf("Usage: ./cexecsnoop.bt <container_pid>");
+        exit();
+    }
+    printf("%-10s %-10s %-10s %-20s %s\n", "TIME(ms)", "PPID", "PID", "PATHNAME", "ARGV");
+}
+
+tracepoint:syscalls:sys_enter_exec*
+/ ((struct task_struct *) curtask)->nsproxy->pid_ns_for_children->child_reaper->pid == $1 /
+{
+    printf("%-10u %-10d %-10d %-20s ", elapsed / 1000000, ((struct task_struct *) curtask)->parent->pid, pid, str(args->filename));
+    join(args->argv, ", ");
+}
+
+tracepoint:syscalls:sys_enter_exit*
+/ pid == (uint64) $1 /
+{
+    exit();
+}
